@@ -46,6 +46,29 @@ function isVerdictShape(input: unknown): input is Record<string, unknown> {
   );
 }
 
+function extractVerdictFromText(text: string): Record<string, unknown> {
+  const compact = text.replace(/\s+/g, " ").trim();
+  const upper = compact.toUpperCase();
+  const statusMatch = upper.match(/\b(PASS|WARN|FAIL)\b/);
+  const status = statusMatch ? statusMatch[1] : (upper.includes("FAIL") || upper.includes("ERROR") ? "FAIL" : "WARN");
+  const scoreMatch = upper.match(/\bSCORE\b[^0-9]{0,8}([0-9]{1,3})\b/);
+  const scoreRaw = scoreMatch ? Number(scoreMatch[1]) : status === "PASS" ? 85 : status === "WARN" ? 65 : 30;
+  const score = Math.max(0, Math.min(100, Math.round(scoreRaw)));
+
+  const blocking: string[] = [];
+  if (status === "FAIL") {
+    blocking.push("unstructured_agent_failure");
+  }
+
+  return {
+    status,
+    score,
+    summary: compact.slice(0, 220) || "Agent returned unstructured response",
+    blocking,
+    details: { raw_text: compact.slice(0, 2000), inferred: true }
+  };
+}
+
 export class ArchestraClient {
   private readonly cfg: ArchestraClientConfig;
 
@@ -189,6 +212,9 @@ export class ArchestraClient {
               for (const part of mergedParts) {
                 if ((part.kind === "text" || part.type === "text") && typeof part.text === "string") {
                   parsedPart = extractFirstJsonObject(part.text);
+                  if (!parsedPart) {
+                    parsedPart = extractVerdictFromText(part.text);
+                  }
                   if (parsedPart) break;
                 }
                 if (part.kind === "data" || part.type === "data" || (typeof part.data === "object" && part.data !== null)) {
