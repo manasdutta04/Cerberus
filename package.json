@@ -1,0 +1,34 @@
+{
+  "name": "cerberus",
+  "version": "0.1.0",
+  "description": "Multi-agent release gatekeeper for Archestra + MCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "cerberus": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev:server": "tsx src/server.ts",
+    "dev:cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0",
+    "yaml": "^2.5.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
