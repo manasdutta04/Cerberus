@@ -157,3 +157,20 @@ Test coverage includes:
 - Unit tests for scoring and policy parsing
 - Contract tests for JSON schemas
 - E2E-style tests for CLI and HTTP behavior
+
+## Render Deploy
+This repo includes `/Users/manas/Coding Workspace/Cerberus/render.yaml` with two services:
+- `cerberus-api` (`npm run start`)
+- `cerberus-release-tools` (`npm run start:mcp`)
+
+Deploy steps:
+1. Push latest code to GitHub.
+2. In Render, create a Blueprint from this repo (`render.yaml`).
+3. Set secret env vars in Render dashboard:
+- `ARCH_ESTRA_BASE_URL`
+- `ARCH_ESTRA_API_KEY`
+- `ARCH_ESTRA_SECURITY_AGENT_ID`
+- `ARCH_ESTRA_PERFORMANCE_AGENT_ID`
+- `ARCH_ESTRA_COST_AGENT_ID`
+- `MCP_SERVER_TOKEN`
+4. Deploy both services.

@@ -8,6 +8,8 @@ export function buildServer(policyPath = "./config/policy.yaml") {
   const deps = createDependencies(policyPath);
   const app = Fastify({ logger: false });
 
+  app.get("/health", async () => ({ ok: true, service: "cerberus-api" }));
+
   app.post("/v1/release-gate/evaluate", async (request, reply) => {
     const parse = EvaluateRequestSchema.safeParse(request.body);
     if (!parse.success) {
