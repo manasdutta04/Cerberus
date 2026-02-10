@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "Multi-agent release gatekeeper for Archestra + MCP",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "bin": {
-    "cerberus": "dist/cli.js"
+    "cerberus": "dist/src/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
-    "start:mcp": "node dist/mcp/server.js",
+    "start": "node dist/src/server.js",
+    "start:mcp": "node dist/src/mcp/server.js",
     "dev:server": "node --import tsx ./src/server.ts",
     "dev:mcp": "node --import tsx ./src/mcp/server.ts",
     "dev:cli": "node --import tsx ./src/cli.ts",

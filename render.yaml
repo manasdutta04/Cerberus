@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: cerberus-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /v1/release-gate/evaluate
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: ARCH_ESTRA_BASE_URL
+        sync: false
+      - key: ARCH_ESTRA_API_KEY
+        sync: false
+      - key: ARCH_ESTRA_SECURITY_AGENT_ID
+        sync: false
+      - key: ARCH_ESTRA_PERFORMANCE_AGENT_ID
+        sync: false
+      - key: ARCH_ESTRA_COST_AGENT_ID
+        sync: false
+      - key: CERBERUS_HTTP_PORT
+        value: "10000"
+      - key: CERBERUS_LOG_LEVEL
+        value: info
+
+  - type: web
+    name: cerberus-release-tools
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:mcp
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: MCP_HTTP_HOST
+        value: 0.0.0.0
+      - key: MCP_HTTP_PORT
+        value: "10000"
+      - key: MCP_SERVER_TOKEN
+        sync: false
+      - key: MCP_LOG_LEVEL
+        value: info
