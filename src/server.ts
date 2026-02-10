@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { pathToFileURL } from "node:url";
 import { createDependencies } from "./index.js";
 import { evaluateRelease } from "./judge/evaluateRelease.js";
 import { EvaluateRequestSchema } from "./types/contracts.js";
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
   deps.logger.info("server_started", { port: deps.config.port });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = process.argv[1] ? pathToFileURL(process.argv[1]).href === import.meta.url : false;
+
+if (isMainModule) {
   void main();
 }

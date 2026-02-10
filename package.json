@@ -11,9 +11,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "start:mcp": "node dist/mcp/server.js",
-    "dev:server": "tsx src/server.ts",
+    "dev:server": "node --import tsx ./src/server.ts",
     "dev:mcp": "node --import tsx ./src/mcp/server.ts",
-    "dev:cli": "tsx src/cli.ts",
+    "dev:cli": "node --import tsx ./src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
