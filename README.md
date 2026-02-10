@@ -6,6 +6,7 @@ Cerberus is a multi-agent release gatekeeper for Archestra + MCP. It evaluates S
 - Real Archestra integration for specialist agents
 - Deterministic local judge with weighted policy
 - CLI and HTTP API surfaces
+- Standalone MCP server exposing Cerberus toolchain
 - Fail-closed behavior for integration outages/timeouts
 - Typed contracts and policy validation
 
@@ -26,6 +27,10 @@ Set required environment variables:
 - `ARCH_ESTRA_COST_AGENT_ID`
 - `CERBERUS_HTTP_PORT` (optional, default `8080`)
 - `CERBERUS_LOG_LEVEL` (optional, default `info`)
+- `MCP_HTTP_HOST` (optional, default `0.0.0.0`)
+- `MCP_HTTP_PORT` (optional, default `8090`)
+- `MCP_SERVER_TOKEN` (optional, bearer token for MCP endpoint auth)
+- `MCP_LOG_LEVEL` (optional, default `info`)
 
 ## Policy
 Policy is versioned at `config/policy.yaml`.
@@ -74,6 +79,55 @@ CI curl example:
 curl -sS -X POST "http://localhost:8080/v1/release-gate/evaluate" \
   -H "content-type: application/json" \
   -d '{"sha":"abc123","env":"staging","service_url":"https://service.example"}'
+```
+
+## MCP Tools Server
+This repository includes a deployable MCP server named `cerberus-release-tools` with the required tools:
+- `sast_scan`
+- `dependency_scan`
+- `container_scan`
+- `load_test`
+- `fetch_metrics`
+- `estimate_cost`
+- `usage_report`
+
+Run locally:
+```bash
+npm run dev:mcp
+```
+
+Health check:
+```bash
+curl http://localhost:8090/health
+```
+
+MCP endpoint:
+- `POST /mcp`
+- Optional auth header: `Authorization: Bearer $MCP_SERVER_TOKEN`
+
+Example `tools/list` call:
+```bash
+curl -sS -X POST "http://localhost:8090/mcp" \
+  -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+### Register in Archestra
+1. Deploy this MCP server (`npm run build && npm run start:mcp` or Docker).
+2. In Archestra: `MCP Registry` -> `Add MCP Server`.
+3. Choose `Remote (orchestrated not by Archestra)`.
+4. Set URL to your endpoint, e.g. `https://<host>/mcp`.
+5. If token enabled, configure `Authorization: Bearer <MCP_SERVER_TOKEN>`.
+6. Install server and verify all seven tools appear.
+7. Attach tools to agents:
+- `Security`: `sast_scan`, `dependency_scan`, `container_scan`
+- `Performance`: `load_test`, `fetch_metrics`
+- `Cost`: `estimate_cost`, `usage_report`
+
+### Docker run
+```bash
+docker build -t cerberus-release-tools .
+docker run --rm -p 8090:8090 -e MCP_SERVER_TOKEN=change-me cerberus-release-tools
 ```
 
 ## Output Contract
