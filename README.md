@@ -98,7 +98,7 @@ npm run dev:cli -- run --sha abc123 --env staging --service-url https://example.
 ```
 
 ## Deploy
-Render blueprint is included at `/Users/manas/Coding Workspace/Cerberus/render.yaml`.
+Render blueprint is included at `./render.yaml`.
 
 ## Full Setup Guide
-Use `/Users/manas/Coding Workspace/Cerberus/SETUP.md` for complete local, Archestra, and cloud deployment steps.
+Use `./SETUP.md` for complete local, Archestra, and cloud deployment steps.

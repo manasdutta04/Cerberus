@@ -12,13 +12,13 @@ This document shows exactly how to run Cerberus locally and in cloud.
 
 ## 2) Clone and Install
 ```bash
-cd "/Users/manas/Coding Workspace/Cerberus"
+cd "/Users/Cerberus"
 npm install
 cp .env.example .env
 ```
 
 ## 3) Required Environment Variables
-Edit `/Users/manas/Coding Workspace/Cerberus/.env`:
+Edit `./.env`:
 
 ```env
 ARCH_ESTRA_BASE_URL=http://localhost:9000
@@ -106,7 +106,7 @@ In Archestra UI:
 - `Cost`: `estimate_cost`, `usage_report`
 
 ## 7) Render Deployment
-This repo includes `/Users/manas/Coding Workspace/Cerberus/render.yaml` with two services:
+This repo includes `./render.yaml` with two services:
 - `cerberus-api`
 - `cerberus-release-tools`
 
