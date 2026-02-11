@@ -28,11 +28,23 @@ ARCH_ESTRA_PERFORMANCE_AGENT_ID=<performance_agent_id>
 ARCH_ESTRA_COST_AGENT_ID=<cost_agent_id>
 CERBERUS_HTTP_PORT=8080
 CERBERUS_LOG_LEVEL=info
+CERBERUS_API_TOKEN=
 
 MCP_HTTP_HOST=0.0.0.0
 MCP_HTTP_PORT=8090
 MCP_SERVER_TOKEN=<long_random_token>
 MCP_LOG_LEVEL=info
+
+# Optional real-data mode for MCP tools
+REAL_TOOLS_BEARER_TOKEN=
+REAL_TOOL_TIMEOUT_MS=10000
+REAL_TOOL_SAST_SCAN_URL=
+REAL_TOOL_DEPENDENCY_SCAN_URL=
+REAL_TOOL_CONTAINER_SCAN_URL=
+REAL_TOOL_LOAD_TEST_URL=
+REAL_TOOL_FETCH_METRICS_URL=
+REAL_TOOL_ESTIMATE_COST_URL=
+REAL_TOOL_USAGE_REPORT_URL=
 ```
 
 Important:
@@ -74,6 +86,7 @@ API evaluate:
 ```bash
 curl -sS -X POST "http://localhost:8080/v1/release-gate/evaluate" \
   -H "content-type: application/json" \
+  -H "Authorization: Bearer <CERBERUS_API_TOKEN_IF_SET>" \
   -d '{"sha":"stable-001","env":"staging","service_url":"https://example.com"}'
 ```
 
@@ -127,6 +140,7 @@ API evaluate (cloud):
 ```bash
 curl -sS -X POST "https://cerberus-api-sxe8.onrender.com/v1/release-gate/evaluate" \
   -H "content-type: application/json" \
+  -H "Authorization: Bearer <CERBERUS_API_TOKEN_IF_SET>" \
   -d '{"sha":"stable-001","env":"staging","service_url":"https://example.com"}'
 ```
 
@@ -137,8 +151,12 @@ curl -sS -X POST "https://cerberus-api-sxe8.onrender.com/v1/release-gate/evaluat
   - wrong agent IDs
 - `{"error":"unauthorized"}` on MCP:
   - missing/wrong `Authorization: Bearer <MCP_SERVER_TOKEN>`
+- API evaluate endpoint returns `401`:
+  - set `CERBERUS_API_TOKEN` correctly and send `Authorization: Bearer <CERBERUS_API_TOKEN>`
 - `Route GET:/ not found`:
   - expected; use `/health` or API POST endpoints.
+- tool outputs are synthetic:
+  - configure `REAL_TOOL_*_URL` variables to connect real scanners/metrics/cost services
 
 ## 10) Security
 - Rotate all keys/tokens that were ever shared in logs, screenshots, or chat.

@@ -16,6 +16,7 @@ export interface RuntimeConfig {
   };
   port: number;
   logLevel: string;
+  apiToken?: string;
 }
 
 export function loadRuntimeConfig(): RuntimeConfig {
@@ -41,8 +42,9 @@ export function loadRuntimeConfig(): RuntimeConfig {
       performance: process.env.ARCH_ESTRA_PERFORMANCE_AGENT_ID as string,
       cost: process.env.ARCH_ESTRA_COST_AGENT_ID as string
     },
-    port: Number(process.env.CERBERUS_HTTP_PORT ?? "8080"),
-    logLevel: process.env.CERBERUS_LOG_LEVEL ?? "info"
+    port: Number(process.env.PORT ?? process.env.CERBERUS_HTTP_PORT ?? "8080"),
+    logLevel: process.env.CERBERUS_LOG_LEVEL ?? "info",
+    apiToken: process.env.CERBERUS_API_TOKEN
   };
 }
 

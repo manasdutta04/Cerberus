@@ -29,6 +29,7 @@ curl -sS -X POST "https://cerberus-release-tools.onrender.com/mcp" \
 ```bash
 curl -sS -X POST "https://cerberus-api-sxe8.onrender.com/v1/release-gate/evaluate" \
   -H "content-type: application/json" \
+  -H "Authorization: Bearer <CERBERUS_API_TOKEN_IF_ENABLED>" \
   -d '{"sha":"stable-001","env":"staging","service_url":"https://example.com"}'
 ```
 
@@ -73,6 +74,23 @@ npm install
 npm run dev:mcp      # terminal 1
 npm run dev:server   # terminal 2
 ```
+
+Optional API protection:
+- Set `CERBERUS_API_TOKEN` and send `Authorization: Bearer <token>` to `/v1/release-gate/evaluate`.
+
+## Real Data Mode (Production)
+By default, MCP tools return deterministic synthetic outputs for demo reliability.
+To use real data providers, set per-tool URLs:
+- `REAL_TOOL_SAST_SCAN_URL`
+- `REAL_TOOL_DEPENDENCY_SCAN_URL`
+- `REAL_TOOL_CONTAINER_SCAN_URL`
+- `REAL_TOOL_LOAD_TEST_URL`
+- `REAL_TOOL_FETCH_METRICS_URL`
+- `REAL_TOOL_ESTIMATE_COST_URL`
+- `REAL_TOOL_USAGE_REPORT_URL`
+
+Optional shared upstream auth:
+- `REAL_TOOLS_BEARER_TOKEN`
 
 CLI run:
 ```bash

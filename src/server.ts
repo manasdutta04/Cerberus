@@ -11,6 +11,13 @@ export function buildServer(policyPath = "./config/policy.yaml") {
   app.get("/health", async () => ({ ok: true, service: "cerberus-api" }));
 
   app.post("/v1/release-gate/evaluate", async (request, reply) => {
+    if (deps.config.apiToken) {
+      const auth = request.headers.authorization;
+      if (auth !== `Bearer ${deps.config.apiToken}`) {
+        return reply.status(401).send({ error: "unauthorized" });
+      }
+    }
+
     const parse = EvaluateRequestSchema.safeParse(request.body);
     if (!parse.success) {
       return reply.status(400).send({

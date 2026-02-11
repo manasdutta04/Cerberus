@@ -96,7 +96,7 @@ export function buildMcpServer() {
             return reply.status(400).send(makeError(id, -32602, "Invalid params: missing tool name"));
           }
 
-          const result = callTool(name, args);
+          const result = await callTool(name, args);
           return reply.send(makeResult(id, result));
         }
         default:
@@ -112,7 +112,7 @@ export function buildMcpServer() {
 }
 
 async function main(): Promise<void> {
-  const port = Number(process.env.MCP_HTTP_PORT ?? "8090");
+  const port = Number(process.env.PORT ?? process.env.MCP_HTTP_PORT ?? "8090");
   const host = process.env.MCP_HTTP_HOST ?? "0.0.0.0";
   const app = buildMcpServer();
   await app.listen({ port, host });

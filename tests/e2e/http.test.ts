@@ -12,6 +12,7 @@ const baseEnv = {
 
 describe("HTTP e2e", () => {
   beforeEach(() => {
+    delete process.env.CERBERUS_API_TOKEN;
     Object.assign(process.env, baseEnv);
   });
 
