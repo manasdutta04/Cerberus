@@ -4,8 +4,8 @@ weights:
   cost: 0.2
 ship_threshold: 75
 fail_closed: true
-timeout_ms_per_agent: 15000
-max_retries: 2
+timeout_ms_per_agent: 30000
+max_retries: 0
 blocking_rules:
   security:
     severities:

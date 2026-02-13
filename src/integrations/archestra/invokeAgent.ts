@@ -1,9 +1,35 @@
 import { IntegrationError, ValidationError } from "../../errors.js";
 import type { ArchestraClient } from "./client.js";
 
-function normalizeStatus(value: string): "PASS" | "WARN" | "FAIL" {
-  if (value === "PASS" || value === "WARN" || value === "FAIL") {
-    return value;
+function normalizeStatus(value: string, score: number, blocking: string[]): "PASS" | "WARN" | "FAIL" {
+  const upper = value.trim().toUpperCase();
+  if (upper === "PASS" || upper === "WARN" || upper === "FAIL") {
+    return upper;
+  }
+
+  const pass = /\bPASS\b|\bOK\b|\bSUCCESS\b/.test(upper);
+  const warn = /\bWARN(?:ING)?\b|\bCAUTION\b/.test(upper);
+  const fail = /\bFAIL(?:ED)?\b|\bERROR\b|\bBLOCK(?:ED)?\b|\bNO[_\s-]?SHIP\b/.test(upper);
+  const flags = [pass, warn, fail].filter(Boolean).length;
+
+  if (flags === 1) {
+    if (fail) return "FAIL";
+    if (warn) return "WARN";
+    if (pass) return "PASS";
+  }
+
+  // Ambiguous status strings (e.g. "PASS|WARN|FAIL"): infer from score/blocking.
+  if (blocking.length > 0) {
+    return "FAIL";
+  }
+  if (score >= 80) {
+    return "PASS";
+  }
+  if (score >= 60) {
+    return "WARN";
+  }
+  if (score >= 0) {
+    return "FAIL";
   }
   throw new ValidationError(`invalid agent status: ${value}`);
 }
@@ -24,12 +50,13 @@ export async function invokeWithRetry(
     try {
       const res = await client.invokeAgent(payload);
       const score = typeof res.score === "number" ? Math.max(0, Math.min(100, Math.round(res.score))) : 50;
+      const blocking = res.blocking ?? [];
 
       return {
-        status: normalizeStatus(res.status),
+        status: normalizeStatus(res.status, score, blocking),
         score,
         summary: res.summary ?? "No summary provided",
-        blocking: res.blocking ?? [],
+        blocking,
         details: res.details ?? {}
       };
     } catch (error) {
@@ -39,7 +66,13 @@ export async function invokeWithRetry(
         throw error;
       }
 
-      await sleep(200 * (attempt + 1));
+      // Timeout retries significantly increase tail latency with low recovery odds.
+      if (error.code === "timeout") {
+        throw error;
+      }
+
+      const baseDelay = error.code === "http_429" || error.code === "a2a_empty_text" ? 3000 : 500;
+      await sleep(baseDelay * (attempt + 1));
       attempt += 1;
     }
   }

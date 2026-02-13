@@ -32,11 +32,11 @@ function roundScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function buildFailureDecision(message: string, traceId: string): FinalDecision {
+function buildFailureDecision(message: string, traceId: string, failedGate = "integration_unavailable"): FinalDecision {
   return {
     decision: "NO_SHIP",
     score: 0,
-    failed_gates: ["integration_unavailable"],
+    failed_gates: [failedGate],
     next_actions: [message],
     inputs: {
       security: "FAIL",
@@ -105,29 +105,28 @@ export async function evaluateRelease(
   deps.logger.info("release_evaluation_started", { trace_id: resolvedTraceId, sha: request.sha, env: request.env });
 
   try {
-    const [security, performance, cost] = await Promise.all([
-      runSecurityAgent({
-        request,
-        traceId: resolvedTraceId,
-        client: deps.client,
-        policy: deps.policy,
-        agentId: deps.agentIds.security
-      }),
-      runPerformanceAgent({
-        request,
-        traceId: resolvedTraceId,
-        client: deps.client,
-        policy: deps.policy,
-        agentId: deps.agentIds.performance
-      }),
-      runCostAgent({
-        request,
-        traceId: resolvedTraceId,
-        client: deps.client,
-        policy: deps.policy,
-        agentId: deps.agentIds.cost
-      })
-    ]);
+    // Run sequentially to reduce burst pressure on LLM free-tier rate limits.
+    const security = await runSecurityAgent({
+      request,
+      traceId: resolvedTraceId,
+      client: deps.client,
+      policy: deps.policy,
+      agentId: deps.agentIds.security
+    });
+    const performance = await runPerformanceAgent({
+      request,
+      traceId: resolvedTraceId,
+      client: deps.client,
+      policy: deps.policy,
+      agentId: deps.agentIds.performance
+    });
+    const cost = await runCostAgent({
+      request,
+      traceId: resolvedTraceId,
+      client: deps.client,
+      policy: deps.policy,
+      agentId: deps.agentIds.cost
+    });
 
     const verdicts = [security, performance, cost] as AgentVerdict[];
     const weightedScore = scoreVerdicts(verdicts, deps.policy);
@@ -159,15 +158,49 @@ export async function evaluateRelease(
 
     return { decision: validated, runtimeFailed: false };
   } catch (error) {
+    const errorCode = error instanceof IntegrationError ? error.code : undefined;
     deps.logger.error("release_evaluation_failed", {
       trace_id: resolvedTraceId,
       duration_ms: Date.now() - startedAt,
-      error: (error as Error).message
+      error: (error as Error).message,
+      code: errorCode
     });
 
     if (deps.policy.fail_closed && (error instanceof IntegrationError || error instanceof ValidationError)) {
+      const failure =
+        error instanceof IntegrationError && error.code === "timeout"
+          ? buildFailureDecision(
+              "Archestra agent timed out. Check model/provider latency or lower retries/timeouts.",
+              resolvedTraceId,
+              "integration_timeout"
+            )
+          : error instanceof IntegrationError && (error.code === "http_429" || error.code === "a2a_empty_text")
+            ? buildFailureDecision(
+                "LLM provider rate limit/quota reached. Retry later or switch API key/provider.",
+                resolvedTraceId,
+                "llm_rate_limited"
+              )
+            : error instanceof IntegrationError && (error.code === "http_401" || error.code === "http_403")
+              ? buildFailureDecision(
+                  "Archestra auth failed for agent invocation. Verify token scope and gateway permissions.",
+                  resolvedTraceId,
+                  "integration_auth_error"
+                )
+              : error instanceof IntegrationError && error.code === "network_error"
+                ? buildFailureDecision(
+                    "Archestra network path unavailable. Verify local services and base URL reachability.",
+                    resolvedTraceId,
+                    "integration_network_error"
+                  )
+                : error instanceof ValidationError
+                  ? buildFailureDecision(
+                      "Provider response could not be parsed to Cerberus contract. Check agent output format and model compatibility.",
+                      resolvedTraceId,
+                      "integration_invalid_response"
+                    )
+            : buildFailureDecision("Archestra integration unavailable. Retry after restoring connectivity.", resolvedTraceId);
       return {
-        decision: buildFailureDecision("Archestra integration unavailable. Retry after restoring connectivity.", resolvedTraceId),
+        decision: failure,
         runtimeFailed: true
       };
     }

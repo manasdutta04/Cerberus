@@ -50,23 +50,100 @@ function extractVerdictFromText(text: string): Record<string, unknown> {
   const compact = text.replace(/\s+/g, " ").trim();
   const upper = compact.toUpperCase();
   const statusMatch = upper.match(/\b(PASS|WARN|FAIL)\b/);
-  const status = statusMatch ? statusMatch[1] : (upper.includes("FAIL") || upper.includes("ERROR") ? "FAIL" : "WARN");
+  const inferredUnstructured = !statusMatch;
+  const status = inferredUnstructured
+    ? "FAIL"
+    : statusMatch[1];
   const scoreMatch = upper.match(/\bSCORE\b[^0-9]{0,8}([0-9]{1,3})\b/);
-  const scoreRaw = scoreMatch ? Number(scoreMatch[1]) : status === "PASS" ? 85 : status === "WARN" ? 65 : 30;
+  const scoreRaw = inferredUnstructured
+    ? 0
+    : scoreMatch
+      ? Number(scoreMatch[1])
+      : status === "PASS"
+        ? 85
+        : status === "WARN"
+          ? 65
+          : 30;
   const score = Math.max(0, Math.min(100, Math.round(scoreRaw)));
 
-  const blocking: string[] = [];
-  if (status === "FAIL") {
-    blocking.push("unstructured_agent_failure");
-  }
+  const blocking: string[] = inferredUnstructured || status === "FAIL" ? ["unstructured_agent_failure"] : [];
 
   return {
     status,
     score,
-    summary: compact.slice(0, 220) || "Agent returned unstructured response",
+    summary: inferredUnstructured
+      ? "Agent returned unstructured response"
+      : compact.slice(0, 220) || "Agent returned unstructured response",
     blocking,
-    details: { raw_text: compact.slice(0, 2000), inferred: true }
+    details: { raw_text: compact.slice(0, 2000), inferred: true, unstructured: inferredUnstructured }
   };
+}
+
+function parseVerdictFromTextCandidate(text: unknown): Record<string, unknown> | null {
+  if (typeof text !== "string") return null;
+  const rawText = text.trim();
+  if (rawText.length === 0) return null;
+  const parsedJson = extractFirstJsonObject(rawText);
+  if (parsedJson) return parsedJson;
+  return extractVerdictFromText(rawText);
+}
+
+function extractVerdictFromUnknown(input: unknown, seen = new Set<unknown>(), depth = 0): Record<string, unknown> | null {
+  if (depth > 8 || input === null || input === undefined) {
+    return null;
+  }
+  if (seen.has(input)) {
+    return null;
+  }
+  if (typeof input === "string") {
+    return parseVerdictFromTextCandidate(input);
+  }
+  if (typeof input !== "object") {
+    return null;
+  }
+
+  seen.add(input);
+
+  if (isVerdictShape(input)) {
+    return input as Record<string, unknown>;
+  }
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      const parsed = extractVerdictFromUnknown(item, seen, depth + 1);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
+
+  const obj = input as Record<string, unknown>;
+  const priorityKeys = [
+    "output",
+    "result",
+    "message",
+    "content",
+    "parts",
+    "data",
+    "choices",
+    "delta",
+    "text",
+    "output_text",
+    "completion"
+  ];
+
+  for (const key of priorityKeys) {
+    if (key in obj) {
+      const parsed = extractVerdictFromUnknown(obj[key], seen, depth + 1);
+      if (parsed) return parsed;
+    }
+  }
+
+  for (const value of Object.values(obj)) {
+    const parsed = extractVerdictFromUnknown(value, seen, depth + 1);
+    if (parsed) return parsed;
+  }
+
+  return null;
 }
 
 export class ArchestraClient {
@@ -101,6 +178,13 @@ export class ArchestraClient {
       '  "blocking": ["string"],',
       '  "details": { "any": "object" }',
       "}",
+      "Rules:",
+      "- Use the minimum number of tool calls needed for a verdict.",
+      "- Do not ask follow-up questions.",
+      "- Do not call archestra__todo_write.",
+      "- Do not call archestra__artifact_write.",
+      "- If any required check cannot complete quickly, return FAIL JSON immediately with a clear blocking reason.",
+      "- Return JSON only. No markdown. No extra text.",
       `Input: ${JSON.stringify(payload.input)}`
     ].join("\n");
 
@@ -135,21 +219,69 @@ export class ArchestraClient {
       ? (root.output as Record<string, unknown>)
       : root;
 
-    const status = output.status;
+    const blocking =
+      Array.isArray(output.blocking)
+        ? (output.blocking as unknown[]).filter((x): x is string => typeof x === "string")
+        : Array.isArray(output.failed_gates)
+          ? (output.failed_gates as unknown[]).filter((x): x is string => typeof x === "string")
+          : undefined;
+
+    const parsedScore =
+      typeof output.score === "number"
+        ? output.score
+        : typeof output.score === "string" && Number.isFinite(Number(output.score))
+          ? Number(output.score)
+          : undefined;
+
+    const summary =
+      typeof output.summary === "string"
+        ? output.summary
+        : typeof output.message === "string"
+          ? output.message
+          : typeof output.reason === "string"
+            ? output.reason
+            : undefined;
+
+    let status: string | undefined;
+    if (typeof output.status === "string") {
+      status = output.status;
+    } else if (typeof output.state === "string") {
+      status = output.state;
+    } else if (typeof output.decision === "string") {
+      const decision = output.decision.toUpperCase();
+      if (decision === "SHIP") status = "PASS";
+      if (decision === "NO_SHIP") status = "FAIL";
+    }
+
+    if (!status) {
+      if (blocking && blocking.length > 0) {
+        status = "FAIL";
+      } else if (typeof parsedScore === "number") {
+        status = parsedScore >= 80 ? "PASS" : parsedScore >= 60 ? "WARN" : "FAIL";
+      } else if (typeof summary === "string") {
+        const upper = summary.toUpperCase();
+        if (upper.includes("FAIL") || upper.includes("ERROR") || upper.includes("BLOCK")) {
+          status = "FAIL";
+        } else if (upper.includes("WARN") || upper.includes("RISK")) {
+          status = "WARN";
+        } else if (upper.includes("PASS") || upper.includes("OK") || upper.includes("SUCCESS")) {
+          status = "PASS";
+        }
+      }
+    }
+
     if (typeof status !== "string") {
-      throw new ValidationError("Archestra response missing string status");
+      throw new ValidationError("Archestra response missing inferable status");
     }
 
     return {
       status,
-      score: typeof output.score === "number" ? output.score : undefined,
-      summary: typeof output.summary === "string" ? output.summary : undefined,
-      blocking: Array.isArray(output.blocking)
-        ? (output.blocking as unknown[]).filter((x): x is string => typeof x === "string")
-        : undefined,
+      score: parsedScore,
+      summary,
+      blocking,
       details: typeof output.details === "object" && output.details !== null
         ? (output.details as Record<string, unknown>)
-        : undefined
+        : output
     };
   }
 
@@ -204,18 +336,35 @@ export class ArchestraClient {
                   ? (root.result as Record<string, unknown>)
                   : undefined;
               const message = resultObj?.message as Record<string, unknown> | undefined;
+              const messageContent = message?.content;
               const directParts = resultObj?.parts as Array<Record<string, unknown>> | undefined;
               const parts = message?.parts as Array<Record<string, unknown>> | undefined;
-              const mergedParts = [...(parts ?? []), ...(directParts ?? [])];
+              const contentParts = Array.isArray(resultObj?.content)
+                ? (resultObj?.content as unknown[]).filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null)
+                : [];
+              const messageContentParts = Array.isArray(messageContent)
+                ? (messageContent as unknown[]).filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null)
+                : [];
+              const mergedParts = [...(parts ?? []), ...(directParts ?? []), ...contentParts, ...messageContentParts];
 
               let parsedPart: Record<string, unknown> | null = null;
+              let hasTextPart = false;
+              let hasNonEmptyTextPart = false;
+
+              const parseTextLike = (value: unknown): Record<string, unknown> | null => {
+                if (typeof value !== "string") return null;
+                hasTextPart = true;
+                if (value.trim().length > 0) {
+                  hasNonEmptyTextPart = true;
+                }
+                return parseVerdictFromTextCandidate(value);
+              };
+
               for (const part of mergedParts) {
-                if ((part.kind === "text" || part.type === "text") && typeof part.text === "string") {
-                  parsedPart = extractFirstJsonObject(part.text);
-                  if (!parsedPart) {
-                    parsedPart = extractVerdictFromText(part.text);
-                  }
-                  if (parsedPart) break;
+                // Common A2A and provider wrappers: part.text / part.output_text / part.content
+                parsedPart = parseTextLike(part.text) ?? parseTextLike(part.output_text) ?? parseTextLike(part.content);
+                if (parsedPart) {
+                  break;
                 }
                 if (part.kind === "data" || part.type === "data" || (typeof part.data === "object" && part.data !== null)) {
                   if (isVerdictShape(part.data)) {
@@ -230,6 +379,23 @@ export class ArchestraClient {
                     }
                   }
                 }
+
+                // OpenAI-style nested content blocks on a part.
+                if (!parsedPart && Array.isArray(part.content)) {
+                  for (const chunk of part.content as unknown[]) {
+                    if (typeof chunk === "string") {
+                      parsedPart = parseTextLike(chunk);
+                      if (parsedPart) break;
+                      continue;
+                    }
+                    if (typeof chunk === "object" && chunk !== null) {
+                      const block = chunk as Record<string, unknown>;
+                      parsedPart = parseTextLike(block.text) ?? parseTextLike(block.output_text) ?? parseTextLike(block.content);
+                      if (parsedPart) break;
+                    }
+                  }
+                }
+                if (parsedPart) break;
               }
 
               // Some A2A implementations return output directly under result.
@@ -238,6 +404,27 @@ export class ArchestraClient {
                 if (isVerdictShape(resultOutput)) {
                   parsedPart = resultOutput as Record<string, unknown>;
                 }
+              }
+
+              // Some providers return plain text in top-level result fields.
+              if (!parsedPart) {
+                parsedPart =
+                  parseTextLike(resultObj?.text) ??
+                  parseTextLike(resultObj?.output_text) ??
+                  parseTextLike(resultObj?.completion) ??
+                  parseTextLike(resultObj?.content) ??
+                  parseTextLike(messageContent);
+              }
+
+              if (!parsedPart) {
+                parsedPart = extractVerdictFromUnknown(resultObj) ?? extractVerdictFromUnknown(root.result);
+              }
+
+              if (!parsedPart && hasTextPart && !hasNonEmptyTextPart) {
+                throw new IntegrationError("A2A response contained only empty text output (likely provider quota/rate limit)", {
+                  code: "a2a_empty_text",
+                  retryable: true
+                });
               }
 
               if (!parsedPart) {

@@ -52,10 +52,13 @@ export function createDependencies(policyPath: string) {
   const config = loadRuntimeConfig();
   const policy = loadPolicy(policyPath);
   const logger = new Logger(config.logLevel);
+  const totalAttempts = policy.max_retries + 1;
+  // Treat timeout_ms_per_agent as a per-agent total budget, not per-retry-attempt.
+  const timeoutPerAttemptMs = Math.max(1000, Math.floor(policy.timeout_ms_per_agent / totalAttempts));
   const client = new ArchestraClient({
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
-    timeoutMs: policy.timeout_ms_per_agent
+    timeoutMs: timeoutPerAttemptMs
   });
 
   return {
